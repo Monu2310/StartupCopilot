@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { asyncHandler } from "../utils/asyncHandler";
 import { parseWithSchema } from "../utils/validate";
 import { cacheGet, cacheSet } from "../services/cache/cache";
@@ -38,6 +38,10 @@ const roastSchema = z.object({
   sessionId: z.string().optional()
 });
 
+type RoastResult = Awaited<ReturnType<typeof roastChain>>;
+type InvestorResult = Awaited<ReturnType<typeof investorChain>>;
+type ImproverResult = Awaited<ReturnType<typeof improverChain>>;
+
 const hashPayload = (payload: unknown) =>
   createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 
@@ -47,14 +51,7 @@ const compactText = (value: string, maxLength = 800) => {
   return trimmed.slice(0, maxLength);
 };
 
-const compactIdeaInput = (payload: {
-  skills: string;
-  interests: string;
-  budget: string;
-  targetAudience: string;
-  geography: string;
-  context?: string;
-}) => ({
+const compactIdeaInput = (payload: z.infer<typeof generateSchema>) => ({
   skills: compactText(payload.skills, 300),
   interests: compactText(payload.interests, 300),
   budget: compactText(payload.budget, 200),
@@ -68,7 +65,7 @@ export const generateIdea = asyncHandler(async (req, res) => {
   const session = await getOrCreateSession(payload.sessionId);
 
   const cacheKey = `idea:${hashPayload(payload)}`;
-  const cached = await cacheGet(cacheKey);
+  const cached = await cacheGet<Awaited<ReturnType<typeof generateIdeaChain>>>(cacheKey);
   if (cached) {
     res.json({ sessionId: session.sessionId, idea: cached });
     return;
@@ -98,7 +95,7 @@ export const roastIdea = asyncHandler(async (req, res) => {
   const input = JSON.stringify({ idea: payload.idea, tone });
   const cacheKey = `roast:${hashPayload({ idea: payload.idea, tone })}`;
 
-  const cached = await cacheGet(cacheKey);
+  const cached = await cacheGet<RoastResult>(cacheKey);
   if (cached) {
     res.json({ sessionId: session.sessionId, roast: cached });
     return;
@@ -133,18 +130,18 @@ export const analyzeIdea = asyncHandler(async (req, res) => {
   const improverKey = `improver:${hashPayload(payload.idea)}`;
 
   const [roastCached, investorCached, improverCached] = await Promise.all([
-    cacheGet(roastKey),
-    cacheGet(investorKey),
-    cacheGet(improverKey)
+    cacheGet<RoastResult>(roastKey),
+    cacheGet<InvestorResult>(investorKey),
+    cacheGet<ImproverResult>(improverKey)
   ]);
 
-  const roastPromise = roastCached
+  const roastPromise: Promise<RoastResult> = roastCached
     ? Promise.resolve(roastCached)
     : roastChain(input, tone);
-  const investorPromise = investorCached
+  const investorPromise: Promise<InvestorResult> = investorCached
     ? Promise.resolve(investorCached)
     : investorChain(input);
-  const improverPromise = improverCached
+  const improverPromise: Promise<ImproverResult> = improverCached
     ? Promise.resolve(improverCached)
     : improverChain(input);
 
@@ -198,11 +195,8 @@ export const analyzeIdeaStream = asyncHandler(async (req, res) => {
   });
 
   const sendEvent = (event: string, data: unknown) => {
-    res.write(`event: ${event}
-`);
-    res.write(`data: ${JSON.stringify(data)}
-
-`);
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
   try {

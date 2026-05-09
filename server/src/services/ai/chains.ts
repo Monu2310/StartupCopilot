@@ -39,25 +39,30 @@ const extractJsonCandidates = (text: string) => {
 
 const runStructured = async <T>(
   system: string,
-  schema: z.ZodType<T>,
+  schema: z.ZodTypeAny,
   input: string,
   temperature = 0.4
-) => {
+): Promise<T> => {
   const model = getLLM(temperature);
-  const parser = StructuredOutputParser.fromZodSchema(schema);
+  const parser = StructuredOutputParser.fromZodSchema(schema as any) as {
+    getFormatInstructions: () => string;
+    parse: (text: string) => Promise<T>;
+  };
+
   const prompt = ChatPromptTemplate.fromMessages([
     ["system", `${system}\n{format_instructions}`],
     ["human", "{input}"]
   ]);
 
-  const messages = await prompt.formatMessages({
+  const promptText = await prompt.format({
     input,
     format_instructions: parser.getFormatInstructions()
   });
-  const response = await model.invoke(messages);
-  const content = typeof response.content === "string"
-    ? response.content
-    : JSON.stringify(response.content);
+  const response = await model.invoke(promptText);
+  const content =
+    typeof response.content === "string"
+      ? response.content
+      : JSON.stringify(response.content);
 
   try {
     return await parser.parse(content);
@@ -66,17 +71,18 @@ const runStructured = async <T>(
     for (const candidate of candidates) {
       try {
         const parsed = JSON.parse(candidate);
-        return schema.parse(parsed);
+        return schema.parse(parsed) as T;
       } catch {
         try {
           const repaired = jsonrepair(candidate);
           const parsed = JSON.parse(repaired);
-          return schema.parse(parsed);
+          return schema.parse(parsed) as T;
         } catch {
           continue;
         }
       }
     }
+
     const repairPrompt = ChatPromptTemplate.fromMessages([
       [
         "system",
@@ -84,30 +90,34 @@ const runStructured = async <T>(
       ],
       ["human", "{format_instructions}\nRaw:\n{raw}"]
     ]);
-    const repairMessages = await repairPrompt.formatMessages({
+
+    const repairPromptText = await repairPrompt.format({
       format_instructions: parser.getFormatInstructions(),
       raw: content
     });
-    const repairedResponse = await model.invoke(repairMessages);
+
+    const repairedResponse = await model.invoke(repairPromptText);
     const repairedContent =
       typeof repairedResponse.content === "string"
         ? repairedResponse.content
         : JSON.stringify(repairedResponse.content);
+
     const repairedCandidates = extractJsonCandidates(repairedContent).reverse();
     for (const candidate of repairedCandidates) {
       try {
         const parsed = JSON.parse(candidate);
-        return schema.parse(parsed);
+        return schema.parse(parsed) as T;
       } catch {
         try {
           const repaired = jsonrepair(candidate);
           const parsed = JSON.parse(repaired);
-          return schema.parse(parsed);
+          return schema.parse(parsed) as T;
         } catch {
           continue;
         }
       }
     }
+
     throw new Error("Model response was not valid JSON");
   }
 };
@@ -156,8 +166,13 @@ const improverSchema = z.object({
   go_to_market_strategy: z.array(z.string())
 });
 
-export const generateIdeaChain = async (input: string) => {
-  return runStructured(ideaGeneratorSystem, ideaSchema, input, 0.6);
+export type IdeaOutput = z.infer<typeof ideaSchema>;
+export type RoastOutput = z.infer<typeof roastSchema>;
+export type InvestorOutput = z.infer<typeof investorSchema>;
+export type ImproverOutput = z.infer<typeof improverSchema>;
+
+export const generateIdeaChain = async (input: string): Promise<IdeaOutput> => {
+  return runStructured<IdeaOutput>(ideaGeneratorSystem, ideaSchema, input, 0.6);
 };
 
 const toneSuffix: Record<RoastTone, string> = {
@@ -166,15 +181,15 @@ const toneSuffix: Record<RoastTone, string> = {
   neutral: ""
 };
 
-export const roastChain = async (input: string, tone: RoastTone) => {
+export const roastChain = async (input: string, tone: RoastTone): Promise<RoastOutput> => {
   const system = `${roastSystemBase} ${toneSuffix[tone]}`.trim();
-  return runStructured(system, roastSchema, input, 0.7);
+  return runStructured<RoastOutput>(system, roastSchema, input, 0.7);
 };
 
-export const investorChain = async (input: string) => {
-  return runStructured(investorSystem, investorSchema, input, 0.3);
+export const investorChain = async (input: string): Promise<InvestorOutput> => {
+  return runStructured<InvestorOutput>(investorSystem, investorSchema, input, 0.3);
 };
 
-export const improverChain = async (input: string) => {
-  return runStructured(improverSystem, improverSchema, input, 0.5);
+export const improverChain = async (input: string): Promise<ImproverOutput> => {
+  return runStructured<ImproverOutput>(improverSystem, improverSchema, input, 0.5);
 };
