@@ -1,0 +1,11 @@
+{
+  "name": "ai-startup-cofounder",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "build": "npm --prefix client run build"
+  }
+}

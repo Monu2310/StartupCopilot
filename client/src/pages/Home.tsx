@@ -20,8 +20,8 @@ const Home = () => {
   };
 
   return (
-    <div className="grid gap-8">
-      <section className="glass rounded-3xl p-8 shadow-glow">
+    <div className="grid gap-8 min-w-0">
+      <section className="glass rounded-3xl p-8 shadow-glow min-w-0 overflow-hidden">
         <div className="mb-6">
           <p className="text-xs uppercase tracking-[0.4em] text-white/70">Idea Generator</p>
           <h2 className="mt-2 text-3xl font-semibold text-white">Build a startup concept fast</h2>
@@ -29,8 +29,8 @@ const Home = () => {
         <IdeaForm onSubmit={handleSubmit} loading={loading} />
       </section>
 
-      <section className="glass rounded-3xl p-8">
-        <div className="mb-4 flex items-center justify-between">
+      <section className="glass rounded-3xl p-8 min-w-0 overflow-hidden">
+        <div className="mb-4 flex items-center justify-between gap-4">
           <h3 className="text-xl font-semibold text-white">Generated Idea</h3>
           <span className="text-xs uppercase tracking-[0.4em] text-accent">JSON</span>
         </div>
