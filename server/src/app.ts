@@ -22,6 +22,10 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.use("/api/idea", ideaRoutes);
 app.use("/api/session", sessionRoutes);
 
